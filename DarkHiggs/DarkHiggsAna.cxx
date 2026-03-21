@@ -90,6 +90,7 @@ void DarkHiggsAna() {
   Float_t GenPart_pt[5000];
   Int_t GenPart_status[5000];
   UShort_t GenPart_statusFlags[5000];
+  Short_t GenPart_genPartIdxMother[5000];   //[nGenPart]
 
   // Variables defined in this code
   TLorentzVector p4b;
@@ -119,6 +120,7 @@ void DarkHiggsAna() {
   t1->SetBranchStatus("GenPart_pt", 1);
   t1->SetBranchStatus("GenPart_status", 1);
   t1->SetBranchStatus("GenPart_statusFlags", 1);
+  t1->SetBranchStatus("GenPart_genPartIdxMother", 1);
 
 ////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////// Activate branches end ////////////////////////////
@@ -140,6 +142,7 @@ void DarkHiggsAna() {
   t1->SetBranchAddress("GenPart_pdgId", GenPart_pdgId);
   t1->SetBranchAddress("GenPart_status", GenPart_status);
   t1->SetBranchAddress("GenPart_statusFlags", GenPart_statusFlags);
+  t1->SetBranchAddress("GenPart_genPartIdxMother", GenPart_genPartIdxMother);
 
 ////////////////////////////////////////////////////////////////////////////////
 /////////////////////// Get the address of the branch end //////////////////////
@@ -160,6 +163,11 @@ void DarkHiggsAna() {
   TH1D *h_HiggsPt_Gen_Last = new TH1D("h_HiggsPt_Gen_Last", "h_HiggsPt_Gen_Last", 50, 0., 500.);
   
   TH2D *h2_HiggsPt_GenFirst_GenLast = new TH2D("h2_HiggsPt_GenFirst_GenLast", "h2_HiggsPt_GenFirst_GenLast", 50, 0., 500., 50, 0., 500.);
+
+  TH1F *h_nq = new TH1F("h_nq","h_nq",5,0.,5.);
+  TH1F *h_nq_nlep = new TH1F("h_nq_nlep","h_nq_nlep",5,0.,5.);
+  TH1F *h_wplus_decay_pdgId  = new TH1F("h_wplus_decay_pdgId", "h_wplus_decay_pdgId", 62,-31,31.);
+  TH1F *h_wminus_decay_pdgId = new TH1F("h_wminus_decay_pdgId","h_wminus_decay_pdgId",62,-31,31.);
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////// Declare your histogram end //////////////////////////
@@ -188,26 +196,33 @@ void DarkHiggsAna() {
 
     // GenPart analysis
     //
-    int isFirst=0;
-    int isLast=0;
+    unsigned int finalWplus=0;
+    unsigned int finalWminus=0;
     // Loop over gen particles
     for (unsigned int bb = 0; bb < nGenPart; bb++) {
       
-      if (abs(GenPart_pdgId[bb])==25){
-	/*
-	  std::cout << GenPart_pt[bb] << " " 
-	  << GenPart_eta[bb] << " " 
-	  << GenPart_phi[bb] << " " 
-	  << GenPart_status[bb] << " " 
-	  << GenPart_statusFlags[bb] << " " 
-	  << GenPart_pdgId[bb] << std::endl;
-	*/
-	if (GenPart_status[bb]==22) isFirst=bb;
-	if (GenPart_status[bb]==62) isLast=bb;
-	//std::cout << (GenPart_statusFlags[bb] & 1) << std::endl;
-	//std::cout << (GenPart_statusFlags[bb] & (1U << 12)) << std::endl;      
-	//std::cout << (GenPart_statusFlags[bb] & (1U << 13)) << std::endl;      
+      if (GenPart_pdgId[bb]==24) finalWplus=bb;
+      if (GenPart_pdgId[bb]==-24) finalWminus=bb;
+
+    }
+
+    int nq=0;
+    int nlep=0;
+    for (unsigned int bb = 0; bb < nGenPart; bb++) {
+      if (GenPart_genPartIdxMother[bb]==finalWplus || GenPart_genPartIdxMother[bb]==finalWminus){
+        std::cout
+        << bb << " "
+        << GenPart_pdgId[bb] << " "
+        << GenPart_status[bb] << std::endl;
+        if (abs(GenPart_pdgId[bb])<=5) nq++;
+        if (abs(GenPart_pdgId[bb])>=11&&abs(GenPart_pdgId[bb])<=16) nlep++;
       }
+      if (GenPart_genPartIdxMother[bb]==finalWplus)  h_wplus_decay_pdgId->Fill(GenPart_pdgId[bb]);
+      if (GenPart_genPartIdxMother[bb]==finalWminus) h_wminus_decay_pdgId->Fill(GenPart_pdgId[bb]);
+    }
+    std::cout << nq << " " << nlep << std::endl;
+    h_nq->Fill(nq);
+    h_nq_nlep->Fill(nq+nlep);
 
       // https://cmssdt.cern.ch/lxr/source/DataFormats/HepMCCandidate/interface/GenStatusFlags.h?v=CMSSW_16_0_X_2025-12-02-2300#0030
       // if ((GenPart_statusFlags[bb] & (1U << 12)) >0 && abs(GenPart_pdgId[bb])==25){
@@ -219,16 +234,14 @@ void DarkHiggsAna() {
       // 	isLast=bb;
       // }
 
-    }
-
-    //std::cout << "event # etc: " << event << " " << isFirst << " " << isLast << std::endl;
-    
-    h_HiggsPt_Gen_First->Fill(GenPart_pt[isFirst]); 
-    h_HiggsPt_Gen_Last->Fill(GenPart_pt[isLast]);
-    
-    h2_HiggsPt_GenFirst_GenLast->Fill(GenPart_pt[isFirst],GenPart_pt[isLast]);
-
   }
+
+  //std::cout << "event # etc: " << event << " " << isFirst << " " << isLast << std::endl;
+  
+  //h_HiggsPt_Gen_First->Fill(GenPart_pt[isFirst]); 
+  //h_HiggsPt_Gen_Last->Fill(GenPart_pt[isLast]);
+  
+  //h2_HiggsPt_GenFirst_GenLast->Fill(GenPart_pt[isFirst],GenPart_pt[isLast]);
  
 ////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////// End analyze! ///////////////////////////////////
@@ -246,10 +259,15 @@ void DarkHiggsAna() {
   h_HiggsPt_Gen_First->Write();
   h_HiggsPt_Gen_Last->Write();
   h2_HiggsPt_GenFirst_GenLast->Write();
+
+  h_nq->Write();
+  h_nq_nlep->Write();
+
+  h_wplus_decay_pdgId->Write();
+  h_wminus_decay_pdgId->Write();
  
   fout.Close();
 
   gROOT->ProcessLine(".q");
 
-  } // end of script
-
+} // end of script
