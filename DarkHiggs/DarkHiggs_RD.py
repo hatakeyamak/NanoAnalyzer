@@ -19,38 +19,6 @@ rdf_filtered = rdf_with_mask.Filter("ROOT::VecOps::Any(GenElecMask)")
 rdf_final = rdf_filtered.Filter("ROOT::VecOps::Any(GenPart_pt[GenElecMask] > 20)")
 
 #-------------------------------------------------------------------------------
-# 1. Define quark selection: |pdgId| <= 5 and parent is W (24)
-df_with_Ws = rdf.Define(
-    "GenPart_WParentQuark",
-    """
-    ROOT::VecOps::RVec<int> motherIdx = GenPart_genPartIdxMother;
-    ROOT::VecOps::RVec<int> pdgId = GenPart_pdgId;
-    ROOT::VecOps::RVec<bool> isWQuark(pdgId.size(), false);
-    
-    for (size_t i = 0; i < pdgId.size(); ++i) {
-        int mothIdx = motherIdx[i];
-        if (mothIdx >= 0 && mothIdx < pdgId.size()) {
-            if (std::abs(pdgId[i]) <= 5 && std::abs(pdgId[mothIdx]) == 24) {
-                isWQuark[i] = true;
-            }
-        }
-    }
-    return isWQuark;
-    """
-)
-
-# 2. Count quarks per event
-df_with_Ws = df_with_Ws.Define("nWQuarks", "Sum(GenPart_WParentQuark)")
-
-# 3. Create histogram of count
-h_nQuarks = df_with_Ws.Histo1D(("nQuarks", "Number of W-parent Quarks;N;Events", 5, 0, 5), "nWQuarks")
-
-# Draw to show
-c1 = ROOT.TCanvas()
-h_nQuarks.Draw()
-c1.SaveAs("nWQuarks.png")
-
-#-------------------------------------------------------------------------------
 # Define quarks
 rdf = rdf.Define(
     "GenPart_WParentQuark",
@@ -102,11 +70,16 @@ rdf = rdf.Define("nWLeptons", "Sum(GenPart_WParentLepton)")
 rdf = rdf.Define("nWDecayProducts", "nWQuarks + nWLeptons")
 
 # Make histogram
+h_nQuarks = rdf.Histo1D(("nQuarks", "Number of W-parent Quarks;N;Events", 5, 0, 5), "nWQuarks")
 h_nWDecayProducts = rdf.Histo1D(
     ("h_nWDecayProducts", "W decay products;N;Events", 10, 0, 10),
     "nWDecayProducts"
 )
+# Draw to show
+c1 = ROOT.TCanvas()
+h_nQuarks.Draw()
 h_nWDecayProducts.Draw()
+c1.SaveAs("nWQuarks.png")
 c1.SaveAs("nWDecayProducts.png")
 #-------------------------------------------------------------------------------
 
