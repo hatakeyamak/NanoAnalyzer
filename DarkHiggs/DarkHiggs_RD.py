@@ -143,7 +143,6 @@ rdf = rdf.Define("AK4_inv_mass",
 rdf = rdf.Define("MatchJet_inv_mass", 
                  "ComputeTotalInvMass(MatchJet_pt, MatchJet_eta, MatchJet_phi, MatchJet_mass)")
 
-
 # Make histogram
 h_nQuarks = rdf.Histo1D(("nQuarks", "Number of W-parent Quarks;N;Events", 5, 0, 5), "nWQuarks")
 h_nWDecayProducts = rdf.Histo1D(
@@ -167,8 +166,45 @@ h_nFatJet_FullHad = rdf_FullHad.Histo1D(("nFatJet_FullHad","nFatJet_FullHad;nFat
 h_nQuarks_FullHad = rdf_FullHad.Histo1D(("nQuarks_FullHad", "Number of W-parent Quarks;NWQuarks;Events", 5, 0, 5), "nWQuarks")
 h_WQuark_inv_mass_FullHad = rdf_FullHad.Histo1D(("WQuark_inv_mass_FullHad","WQuark_inv_mass;WQuark_inv_mass;Events", 100, 0, 500), "WQuark_inv_mass")
 h_AK4_inv_mass_FullHad = rdf_FullHad.Histo1D(("AK4_inv_mass","AK4_inv_mass;AK4_inv_mass;Events", 100, 0, 500), "AK4_inv_mass")
+h_MatchJet_inv_mass_FullHad = rdf_FullHad.Histo1D(("MatchJet_inv_mass","MatchJet_inv_mass;MatchJet_inv_mass;Events", 100, 0, 500), "MatchJet_inv_mass")
 
-rdf_FullHad.Display(["WQuark_inv_mass", "AK4_inv_mass", "MatchJet_inv_mass", "Jet_pt", "JetGenMatchedIdx"],10).Print()
+#rdf_FullHad.Display(["WQuark_inv_mass", "AK4_inv_mass", "MatchJet_inv_mass", "Jet_pt", "JetGenMatchedIdx"],10).Print()
+
+#-------------------------------------------------------------------------------
+# 2. Basic event selection
+rdf_Baseline = rdf_FullHad.Filter("nFatJet >=1 && FatJet_pt[0]>200 && abs(FatJet_eta[0])<2.4 && PuppiMET_pt>250.", "Events with four WQuarks")
+
+# Declare the C++ helper function
+# Find closest GenPart (status 1 or 23, prompt) to each Jet
+# We assume GenPart_pt, Jet_pt etc., are available
+rdf_Baseline = rdf_Baseline.Define("FatJetMatchedIdx", 
+    """
+    #include "ROOT/RVec.hxx"
+    #include "Math/Vector4D.h"
+    #include "Math/LorentzVector.h"
+
+    ROOT::RVec<float> deltaRToFatJet(Jet_pt.size(), -1);
+    for (size_t i = 0; i < Jet_pt.size(); ++i) {
+        float minDR = 100.; // Max DeltaR
+        float dr = ROOT::VecOps::DeltaR(Jet_eta[i], FatJet_eta[0], 
+                                        Jet_phi[i], FatJet_phi[0]);
+        deltaRToFatJet[i] = dr;
+    }
+    return deltaRToFatJet;
+    """)
+
+# Define a subset based on a condition
+#rdf = rdf.Define("MatchJetMask", "JetGenMatchedIdx > 0") \
+#         .Define("MatchJet_pt", "Jet_pt[MatchJetMask]") \
+#         .Define("MatchJet_eta", "Jet_eta[MatchJetMask]") \
+#         .Define("MatchJet_phi", "Jet_phi[MatchJetMask]") \
+#         .Define("MatchJet_mass", "Jet_mass[MatchJetMask]")
+
+display2 = rdf_Baseline.Display(["WQuark_inv_mass", "AK4_inv_mass", "MatchJet_inv_mass", 
+    "FatJet_pt", "FatJet_eta", "FatJet_phi", "FatJet_mass", 
+    "Jet_pt", "Jet_eta", "Jet_phi", "Jet_mass",
+    "JetGenMatchedIdx", "FatJetMatchedIdx"],10)
+print(display2.AsString())
 
 #-------------------------------------------------------------------------------
 # Specifically inspect nFatJet==2 events
@@ -238,5 +274,6 @@ h_nFatJet_FullHad.Write()
 h_nQuarks_FullHad.Write()
 h_WQuark_inv_mass_FullHad.Write()
 h_AK4_inv_mass_FullHad.Write()
+h_MatchJet_inv_mass_FullHad.Write()
 #---
 outfile.Close()
