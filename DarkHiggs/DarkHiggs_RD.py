@@ -51,6 +51,7 @@ rdf = rdf.Define("WQuarkMask", "GenPart_WParentQuark == 1") \
          .Define("WQuark_mass", "GenPart_mass[WQuarkMask]")
 
 # This function handles a variable number of entries (particles) per event
+# --- ComputeTotalInvMass ---
 ROOT.gInterpreter.Declare("""
 #include "ROOT/RVec.hxx"
 #include "Math/Vector4D.h"
@@ -68,6 +69,42 @@ double ComputeTotalInvMass(ROOT::RVec<double> pt, ROOT::RVec<double> eta,
     return totalVector.M();
 }
 """)
+
+# Declare the C++ helper function
+# Find closest GenPart (status 1 or 23, prompt) to each Jet
+# We assume GenPart_pt, Jet_pt etc., are available
+rdf = rdf.Define("JetGenMatchedIdx", 
+    """
+    #include "ROOT/RVec.hxx"
+    #include "Math/Vector4D.h"
+    #include "Math/LorentzVector.h"
+
+    ROOT::RVec<int> matchedIdx(Jet_pt.size(), -1);
+    for (size_t i = 0; i < Jet_pt.size(); ++i) {
+        float minDR = 0.4; // Max DeltaR
+        int bestGen = -1;
+        for (size_t j = 0; j < GenPart_pt.size(); ++j) {
+            // Apply GenPart selection (e.g., status 1)
+            if (GenPart_WParentQuark[j]) { 
+                float dr = ROOT::VecOps::DeltaR(Jet_eta[i], GenPart_eta[j], 
+                                              Jet_phi[i], GenPart_phi[j]);
+                if (dr < minDR) {
+                    minDR = dr;
+                    bestGen = j;
+                }
+            }
+        }
+        matchedIdx[i] = bestGen;
+    }
+    return matchedIdx;
+    """)
+
+# Define a subset based on a condition
+rdf = rdf.Define("MatchJetMask", "JetGenMatchedIdx > 0") \
+         .Define("MatchJet_pt", "Jet_pt[MatchJetMask]") \
+         .Define("MatchJet_eta", "Jet_eta[MatchJetMask]") \
+         .Define("MatchJet_phi", "Jet_phi[MatchJetMask]") \
+         .Define("MatchJet_mass", "Jet_mass[MatchJetMask]")
 
 # WQuark invariant mass
 rdf = rdf.Define("WQuark_inv_mass", 
@@ -100,9 +137,12 @@ rdf = rdf.Define("nWLeptons", "Sum(GenPart_WParentLepton)")
 # Total
 rdf = rdf.Define("nWDecayProducts", "nWQuarks + nWLeptons")
 
-# WQuark invariant mass
+# AK4 invariant mass
 rdf = rdf.Define("AK4_inv_mass", 
                  "ComputeTotalInvMass(Jet_pt, Jet_eta, Jet_phi, Jet_mass)")
+rdf = rdf.Define("MatchJet_inv_mass", 
+                 "ComputeTotalInvMass(MatchJet_pt, MatchJet_eta, MatchJet_phi, MatchJet_mass)")
+
 
 # Make histogram
 h_nQuarks = rdf.Histo1D(("nQuarks", "Number of W-parent Quarks;N;Events", 5, 0, 5), "nWQuarks")
@@ -128,12 +168,7 @@ h_nQuarks_FullHad = rdf_FullHad.Histo1D(("nQuarks_FullHad", "Number of W-parent 
 h_WQuark_inv_mass_FullHad = rdf_FullHad.Histo1D(("WQuark_inv_mass_FullHad","WQuark_inv_mass;WQuark_inv_mass;Events", 100, 0, 500), "WQuark_inv_mass")
 h_AK4_inv_mass_FullHad = rdf_FullHad.Histo1D(("AK4_inv_mass","AK4_inv_mass;AK4_inv_mass;Events", 100, 0, 500), "AK4_inv_mass")
 
-#columns1 = ["GenPart_phi","GenPart_pdgId","GenPart_genPartIdxMother"]
-
-#rdf_limited = rdf_FullHad_2FatJet.Range(10)
-#rdf_FullHad_2FatJet.Display(columns,10,20).Print()
-#display1 = rdf_FullHad.Display(columns1,10)
-#print(display1.AsString())
+rdf_FullHad.Display(["WQuark_inv_mass", "AK4_inv_mass", "MatchJet_inv_mass", "Jet_pt", "JetGenMatchedIdx"],10).Print()
 
 #-------------------------------------------------------------------------------
 # Specifically inspect nFatJet==2 events
