@@ -1,7 +1,8 @@
 import ROOT
 
 # Enable multi-threading
-ROOT.ROOT.EnableImplicitMT()
+#ROOT.ROOT.EnableImplicitMT()
+ROOT.ROOT.DisableImplicitMT()
 
 # Load NanoAOD file
 rdf = ROOT.RDataFrame("Events", "/cms/data/hatake/ana/DarkHiggs/CMSSW_15_0_10/src/NanoAnalyzer/DarkHiggs/data/PrivSample_DarkHiggsToWW_Zp2000_s300_Chi200_custom_RunIII2024Summer24NanoAODv15_job1.root")
@@ -42,6 +43,36 @@ rdf = rdf.Define(
 # Count quarks
 rdf = rdf.Define("nWQuarks", "Sum(GenPart_WParentQuark)")
 
+# Define a subset based on a condition
+rdf = rdf.Define("WQuarkMask", "GenPart_WParentQuark == 1") \
+         .Define("WQuark_pt", "GenPart_pt[WQuarkMask]") \
+         .Define("WQuark_eta", "GenPart_eta[WQuarkMask]") \
+         .Define("WQuark_phi", "GenPart_phi[WQuarkMask]") \
+         .Define("WQuark_mass", "GenPart_mass[WQuarkMask]")
+
+# This function handles a variable number of entries (particles) per event
+ROOT.gInterpreter.Declare("""
+#include "ROOT/RVec.hxx"
+#include "Math/Vector4D.h"
+#include "Math/LorentzVector.h"
+
+double ComputeTotalInvMass(ROOT::RVec<double> pt, ROOT::RVec<double> eta, 
+                           ROOT::RVec<double> phi, ROOT::RVec<double> mass) {
+    if (pt.size() < 2) return 0.0; // Need at least two particles
+    
+    ROOT::Math::PtEtaPhiMVector totalVector(0,0,0,0);
+    for (size_t i = 0; i < pt.size(); ++i) {
+        ROOT::Math::PtEtaPhiMVector p(pt[i], eta[i], phi[i], mass[i]);
+        totalVector += p;
+    }
+    return totalVector.M();
+}
+""")
+
+# WQuark invariant mass
+rdf = rdf.Define("WQuark_inv_mass", 
+                 "ComputeTotalInvMass(WQuark_pt, WQuark_eta, WQuark_phi, WQuark_mass)")
+
 # Define leptons
 rdf = rdf.Define(
     "GenPart_WParentLepton",
@@ -69,18 +100,58 @@ rdf = rdf.Define("nWLeptons", "Sum(GenPart_WParentLepton)")
 # Total
 rdf = rdf.Define("nWDecayProducts", "nWQuarks + nWLeptons")
 
+# WQuark invariant mass
+rdf = rdf.Define("AK4_inv_mass", 
+                 "ComputeTotalInvMass(Jet_pt, Jet_eta, Jet_phi, Jet_mass)")
+
 # Make histogram
 h_nQuarks = rdf.Histo1D(("nQuarks", "Number of W-parent Quarks;N;Events", 5, 0, 5), "nWQuarks")
 h_nWDecayProducts = rdf.Histo1D(
     ("h_nWDecayProducts", "W decay products;N;Events", 10, 0, 10),
     "nWDecayProducts"
 )
+h_nFatJet = rdf.Histo1D(("nFatJet","nFatJet;nFatJet;Events", 5, 0, 5), "nFatJet")
+
 # Draw to show
 c1 = ROOT.TCanvas()
 h_nQuarks.Draw()
 h_nWDecayProducts.Draw()
 c1.SaveAs("nWQuarks.png")
 c1.SaveAs("nWDecayProducts.png")
+
+#-------------------------------------------------------------------------------
+# 1. Both W decays hadronically
+rdf_FullHad = rdf.Filter("nWQuarks == 4", "Events with four WQuarks")
+
+h_nFatJet_FullHad = rdf_FullHad.Histo1D(("nFatJet_FullHad","nFatJet_FullHad;nFatJet;Events", 5, 0, 5), "nFatJet")
+h_nQuarks_FullHad = rdf_FullHad.Histo1D(("nQuarks_FullHad", "Number of W-parent Quarks;NWQuarks;Events", 5, 0, 5), "nWQuarks")
+h_WQuark_inv_mass_FullHad = rdf_FullHad.Histo1D(("WQuark_inv_mass_FullHad","WQuark_inv_mass;WQuark_inv_mass;Events", 100, 0, 500), "WQuark_inv_mass")
+h_AK4_inv_mass_FullHad = rdf_FullHad.Histo1D(("AK4_inv_mass","AK4_inv_mass;AK4_inv_mass;Events", 100, 0, 500), "AK4_inv_mass")
+
+#columns1 = ["GenPart_phi","GenPart_pdgId","GenPart_genPartIdxMother"]
+
+#rdf_limited = rdf_FullHad_2FatJet.Range(10)
+#rdf_FullHad_2FatJet.Display(columns,10,20).Print()
+#display1 = rdf_FullHad.Display(columns1,10)
+#print(display1.AsString())
+
+#-------------------------------------------------------------------------------
+# Specifically inspect nFatJet==2 events
+rdf_FullHad_2FatJet = rdf_FullHad.Filter("nFatJet == 2", "Events with 2 FatJet")
+
+#rdf.Display({"nFatJet"}, 10).Print()
+rdf_FullHad_2FatJet = rdf_FullHad_2FatJet.Define("WMask", "abs(GenPart_pdgId) == 24") \
+             .Define("GenPart_pt_W", "GenPart_pt[WMask]") \
+             .Define("GenPart_phi_W", "GenPart_phi[WMask]") \
+             .Define("GenPart_eta_W", "GenPart_eta[WMask]")
+
+columns = ["FatJet_pt","FatJet_eta","FatJet_phi","GenPart_pt","GenPart_eta","GenPart_phi","GenPart_pdgId","GenPart_genPartIdxMother"]
+
+#rdf_limited = rdf_FullHad_2FatJet.Range(10)
+#rdf_FullHad_2FatJet.Display(columns,10,20).Print()
+display = rdf_FullHad_2FatJet.Display(columns,10)
+print(display.AsString())
+
 #-------------------------------------------------------------------------------
 
 # Define C++ function to find specific GenParticles
@@ -121,8 +192,16 @@ hist.Draw()
 #-------------------------------------------------------------------------------
 
 # Save the histogram
-outfile = ROOT.TFile("output.root", "RECREATE")
+outfile = ROOT.TFile("DarkHiggs_RD_histos.root", "RECREATE")
 hist.Write()
+#---
 h_nQuarks.Write()
 h_nWDecayProducts.Write()
+h_nFatJet.Write()
+#---
+h_nFatJet_FullHad.Write()
+h_nQuarks_FullHad.Write()
+h_WQuark_inv_mass_FullHad.Write()
+h_AK4_inv_mass_FullHad.Write()
+#---
 outfile.Close()
